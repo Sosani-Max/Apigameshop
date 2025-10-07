@@ -9,9 +9,13 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// ❌ ห้ามใช้ fs หรือ upload จริงบน Vercel (ไม่มี disk)
-// ✅ ถ้าอยากให้ upload ได้จริง ต้องใช้ Cloud storage เช่น Cloudinary, Firebase, หรือ Supabase
-// ในตัวอย่างนี้จะ mock ค่าแทน (ไม่บันทึกไฟล์จริง)
+// ✅ Route ทดสอบ (Root)
+app.get('/', (req, res) => {
+  res.send('🚀 API is running successfully on Vercel!');
+});
+
+// ⚠️ Vercel ไม่มีพื้นที่เก็บไฟล์ถาวร
+// ดังนั้นจะใช้ memory storage แทน (ถ้าอยากเก็บถาวรควรใช้ Cloud storage)
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ✅ เชื่อมต่อฐานข้อมูล MySQL
@@ -43,7 +47,6 @@ app.post('/register', upload.single('avatar'), async (req, res) => {
     db.query(query, [name, email, hashedPassword, 'user', avatar], (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
 
-      // ✅ ใช้ URL ของ Vercel แทน localhost
       const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
         : 'http://localhost:3000';
@@ -95,5 +98,5 @@ app.post('/login', (req, res) => {
   });
 });
 
-// ✅ ต้อง export app แทน listen()
+// ✅ export app สำหรับ Vercel (แทนการใช้ app.listen)
 export default app;
