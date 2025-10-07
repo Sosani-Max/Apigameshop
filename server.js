@@ -4,27 +4,15 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
-import fs from 'fs';
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// ✅ เสิร์ฟไฟล์รูปจากโฟลเดอร์ uploads
-app.use('/uploads', express.static('uploads'));
-
-// ✅ ตั้งค่า multer สำหรับอัปโหลดรูป
-const uploadDir = './uploads';
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + '-' + file.originalname;
-    cb(null, uniqueName);
-  },
-});
-const upload = multer({ storage });
+// ❌ ห้ามใช้ fs หรือ upload จริงบน Vercel (ไม่มี disk)
+// ✅ ถ้าอยากให้ upload ได้จริง ต้องใช้ Cloud storage เช่น Cloudinary, Firebase, หรือ Supabase
+// ในตัวอย่างนี้จะ mock ค่าแทน (ไม่บันทึกไฟล์จริง)
+const upload = multer({ storage: multer.memoryStorage() });
 
 // ✅ เชื่อมต่อฐานข้อมูล MySQL
 const db = mysql.createConnection({
@@ -40,10 +28,10 @@ db.connect((err) => {
   else console.log('✅ Connected to MySQL database');
 });
 
-// ✅ REGISTER (มี avatar)
+// ✅ REGISTER (mock avatar)
 app.post('/register', upload.single('avatar'), async (req, res) => {
   const { name, email, password } = req.body;
-  const avatar = req.file ? req.file.filename : null;
+  const avatar = req.file ? req.file.originalname : null;
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'กรุณาใส่ name, email และ password' });
@@ -55,13 +43,18 @@ app.post('/register', upload.single('avatar'), async (req, res) => {
     db.query(query, [name, email, hashedPassword, 'user', avatar], (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
 
+      // ✅ ใช้ URL ของ Vercel แทน localhost
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000';
+
       res.json({
         message: 'สมัครผู้ใช้เรียบร้อยแล้ว',
         uid: result.insertId,
         name,
         email,
         type: 'user',
-        avatarUrl: avatar ? `http://localhost:3000/uploads/${avatar}` : null,
+        avatarUrl: avatar ? `${baseUrl}/uploads/${avatar}` : null,
       });
     });
   } catch (error) {
@@ -70,8 +63,7 @@ app.post('/register', upload.single('avatar'), async (req, res) => {
   }
 });
 
-
-// ✅ LOGIN (ดึง avatar ด้วย)
+// ✅ LOGIN
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
 
@@ -88,17 +80,20 @@ app.post('/login', (req, res) => {
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ error: 'รหัสผ่านไม่ถูกต้อง' });
 
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000';
+
     res.json({
       message: 'เข้าสู่ระบบสำเร็จ',
       uid: user.id,
       name: user.name,
       email: user.email,
       role: user.type,
-      avatarUrl: user.avatar ? `http://localhost:3000/uploads/${user.avatar}` : null,
+      avatarUrl: user.avatar ? `${baseUrl}/uploads/${user.avatar}` : null,
     });
   });
 });
 
-// ✅ START SERVER
-const PORT = 3000;
-app.listen(PORT, () => console.log(`🚀 Backend API running at http://localhost:${PORT}`));
+// ✅ ต้อง export app แทน listen()
+export default app;
