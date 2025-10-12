@@ -110,7 +110,7 @@ app.post('/wallet', (req, res) => {
     return res.status(400).json({ error: 'จำนวนเงินไม่ถูกต้อง' });
   }
 
-  const querySelect = 'SELECT wallet, avatar FROM users WHERE id = ?';
+  const querySelect = 'SELECT wallet, avatar FROM users WHERE uid = ?';
   db.query(querySelect, [uid], (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
     if (results.length === 0) return res.status(400).json({ error: 'ไม่พบผู้ใช้' });
@@ -118,7 +118,7 @@ app.post('/wallet', (req, res) => {
     const currentWallet = results[0].wallet || 0;
     const newWallet = currentWallet + Number(wallet);
 
-    const queryUpdate = 'UPDATE users SET wallet = ? WHERE id = ?';
+    const queryUpdate = 'UPDATE users SET wallet = ? WHERE uid = ?';
     db.query(queryUpdate, [newWallet, uid], (err2) => {
       if (err2) return res.status(500).json({ error: err2.message });
 
@@ -131,7 +131,7 @@ app.post('/wallet', (req, res) => {
         message: 'เติมเงินสำเร็จ',
         uid: uid,
         newWallet: newWallet,
-        avatarUrl: results[0].avatar ? `${baseUrl}/uploads/${results[0].avatar}` : null,
+        
       });
     });
   });
