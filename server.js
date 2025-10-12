@@ -102,41 +102,44 @@ app.post('/login', (req, res) => {
 app.post('/wallet', (req, res) => {
   const { uid, wallet } = req.body;
 
+  // ตรวจสอบว่ามี uid และ wallet
   if (!uid || !wallet) {
     return res.status(400).json({ error: 'กรุณาใส่ uid และจำนวนเงินที่ต้องการเติม' });
   }
 
-  if (isNaN(wallet) || wallet <= 0) {
+  const amount = Number(wallet);
+  if (isNaN(amount) || amount <= 0) {
     return res.status(400).json({ error: 'จำนวนเงินไม่ถูกต้อง' });
   }
 
-  const querySelect = 'SELECT wallet, avatar FROM users WHERE uid = ?';
+  // ดึงยอดเงินปัจจุบัน
+  const querySelect = 'SELECT wallet FROM users WHERE uid = ?';
   db.query(querySelect, [uid], (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
     if (results.length === 0) return res.status(400).json({ error: 'ไม่พบผู้ใช้' });
 
-    const currentWallet = results[0].wallet || 0;
-    const newWallet = currentWallet + Number(wallet);
+    const currentWallet = Number(results[0].wallet) || 0;
+    const newWallet = currentWallet + amount;
 
+    // อัปเดตยอดเงิน
     const queryUpdate = 'UPDATE users SET wallet = ? WHERE uid = ?';
-    db.query(queryUpdate, [newWallet, uid], (err2) => {
+    db.query(queryUpdate, [newWallet, uid], (err2, updateResult) => {
       if (err2) return res.status(500).json({ error: err2.message });
 
-      // กำหนด baseUrl
-      const baseUrl = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000';
+      if (updateResult.affectedRows === 0) {
+        return res.status(400).json({ error: 'อัปเดตยอดเงินไม่สำเร็จ' });
+      }
 
       res.json({
         message: 'เติมเงินสำเร็จ',
         uid: uid,
-        newWallet: newWallet,
-        
+        oldWallet: currentWallet,
+        added: amount,
+        newWallet: newWallet
       });
     });
   });
 });
-
 
 
 // ✅ export app สำหรับ Vercel (แทนการใช้ app.listen)
