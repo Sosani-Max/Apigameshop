@@ -98,5 +98,42 @@ app.post('/login', (req, res) => {
   });
 });
 
+// API เติมเงิน
+app.post('/wallet', (req, res) => {
+  const { uid, wallet } = req.body;
+
+  if (!uid || !wallet) {
+    return res.status(400).json({ error: 'กรุณาใส่ uid และจำนวนเงินที่ต้องการเติม' });
+  }
+
+  // ตรวจสอบว่าจำนวนเงินเป็นตัวเลขบวก
+  if (isNaN(wallet) || wallet <= 0) {
+    return res.status(400).json({ error: 'จำนวนเงินไม่ถูกต้อง' });
+  }
+
+  // ดึงยอดเงินปัจจุบันของผู้ใช้
+  const querySelect = 'SELECT wallet FROM users WHERE uid = ?';
+  db.query(querySelect, [uid], (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (results.length === 0) return res.status(400).json({ error: 'ไม่พบผู้ใช้' });
+
+    const currentWallet = results[0].wallet || 0;
+    const newWallet = currentWallet + Number(wallet);
+
+    // อัปเดตยอดเงิน
+    const queryUpdate = 'UPDATE users SET wallet = ? WHERE uid = ?';
+    db.query(queryUpdate, [newWallet, uid], (err2) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+
+      res.json({
+        message: 'เติมเงินสำเร็จ',
+        uid: uid,
+        newWallet: newWallet,
+      });
+    });
+  });
+});
+
+
 // ✅ export app สำหรับ Vercel (แทนการใช้ app.listen)
 export default app;
