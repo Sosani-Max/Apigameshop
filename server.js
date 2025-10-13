@@ -132,8 +132,9 @@ app.post("/wallet", (req, res) => {
 });
 
 // ------------------- เพิ่มเกม -------------------
-app.post("/api/games", (req, res) => {
-  const { game_name, price, image, description, category_id } = req.body;
+app.post("/api/games",upload.single("image"), async (req, res) => {
+  const { game_name, price, description, category_id } = req.body;
+   const image = req.file ? req.file.filename : null;
 
   if (!game_name || !price || !image || !description || !category_id) {
     return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบ" });
