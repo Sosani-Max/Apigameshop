@@ -135,25 +135,42 @@ app.post("/wallet", (req, res) => {
 app.post("/api/games", (req, res) => {
   const { game_name, price, image, description, category_id } = req.body;
 
-  if (!game_name || !price || !image || !description || !category_id)
+  if (!game_name || !price || !image || !description || !category_id) {
     return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบ" });
+  }
 
-  // ใช้วันที่ปัจจุบันสำหรับ release_date
-  const release_date = new Date(); // YYYY-MM-DD HH:MM:SS จะถูกแปลงโดย MySQL
+  // แปลง price เป็น number
+  const gamePrice = Number(price);
+  if (isNaN(gamePrice) || gamePrice < 0) {
+    return res.status(400).json({ error: "ราคาต้องเป็นตัวเลขและมากกว่า 0" });
+  }
+
+  const release_date = new Date(); // วันปัจจุบัน
   const sale_count = 0; // default
 
-  const sql =
-    "INSERT INTO games (game_name, price, image, description, release_date, sale_count, category_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
+  const sql = `
+    INSERT INTO games 
+    (game_name, price, image, description, release_date, sale_count, category_id) 
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+
   db.query(
     sql,
-    [game_name, price, image, description, release_date, sale_count, category_id],
+    [game_name, gamePrice, image, description, release_date, sale_count, category_id],
     (err, result) => {
-      if (err) return res.status(500).json({ error: "Failed to add game" });
+      if (err) {
+        console.error("❌ Insert game error:", err);
+        return res.status(500).json({ error: "Failed to add game" });
+      }
+
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000";
 
       res.json({
         message: "✅ Game added successfully",
         id: result.insertId,
-        imageUrl: `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"}/${image}`
+        imageUrl: `${baseUrl}/${image}`
       });
     }
   );
