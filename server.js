@@ -6,7 +6,7 @@ import bcrypt from 'bcrypt';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url'; // ✅ ต้อง import สำหรับ ES Module
+import { fileURLToPath } from 'url';
 
 // ✅ สร้าง __filename / __dirname (สำหรับ ES Module)
 const __filename = fileURLToPath(import.meta.url);
@@ -21,7 +21,7 @@ app.get('/', (req, res) => {
   res.send('🚀 API is running successfully on Vercel!');
 });
 
-// ✅ เก็บไฟล์รูปไว้ใน /uploads (local)
+// ✅ โฟลเดอร์อัปโหลด (เฉพาะตอนรัน local)
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -34,7 +34,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ✅ ให้เรียกรูปจาก /uploads ได้
+// ✅ ให้เข้าถึงไฟล์ /uploads ได้ (เฉพาะ local)
 app.use('/uploads', express.static(uploadDir));
 
 // ✅ เชื่อมต่อฐานข้อมูล MySQL
@@ -106,7 +106,7 @@ app.post('/login', (req, res) => {
 
     res.json({
       message: 'เข้าสู่ระบบสำเร็จ',
-      uid: user.id,
+      uid: user.uid || user.id,
       name: user.name,
       email: user.email,
       role: user.type,
@@ -179,5 +179,5 @@ app.post('/api/games', (req, res) => {
   });
 });
 
-
+// ✅ อย่ารัน app.listen() ใน Vercel — export แทน
 export default app;
