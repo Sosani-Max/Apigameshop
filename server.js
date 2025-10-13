@@ -179,5 +179,5 @@ app.post('/api/games', (req, res) => {
   });
 });
 
-// ✅ อย่ารัน app.listen() ใน Vercel — export แทน
+app.listen(3000, () => console.log('🚀 Server running on port 3000'));
 export default app;
