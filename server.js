@@ -8,28 +8,6 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
-// สำหรับ ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const app = express();
-app.use(cors());
-app.use(bodyParser.json());
-
-// สร้างโฟลเดอร์ uploads ถ้าไม่มี
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-// Multer config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "-"))
-});
-const upload = multer({ storage });
-
-// ให้เข้าถึงไฟล์ /uploads
-app.use("/uploads", express.static(uploadDir));
-
 // MySQL connection
 const db = mysql.createConnection({
   host: "202.28.34.210",
@@ -44,34 +22,74 @@ db.connect(err => {
   else console.log("✅ Connected to MySQL database");
 });
 
+
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, "../uploads/avatars");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `${Date.now()}_${file.originalname}`;
+    cb(null, uniqueName);
+  },
+});
+
+const uploadAvatar = multer({ storage: avatarStorage });
+
 // ------------------- REGISTER -------------------
-app.post("/register", upload.single("avatar"), async (req, res) => {
-  const { name, email, password } = req.body;
-  const avatar = req.file ? req.file.filename : null;
-
-  if (!name || !email || !password) return res.status(400).json({ error: "กรุณาใส่ name, email และ password" });
-
+router.post("/register", uploadAvatar.single("avatar"), async (req, res) => {
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const sql = "INSERT INTO users (name, email, password, type, avatar) VALUES (?, ?, ?, ?, ?)";
-    db.query(sql, [name, email, hashedPassword, "user", avatar], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
+    const { name, email, password } = req.body;
+    const file = req.file;
 
-      const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
-      res.json({
-        message: "สมัครผู้ใช้เรียบร้อยแล้ว",
-        uid: result.insertId,
+    if (!name || !email || !password || !file) {
+      return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบและอัปโหลดรูป" });
+    }
+
+    // ตรวจสอบ email ซ้ำ
+    const [rows] = await conn.query("SELECT * FROM users WHERE email = ?", [email]);
+    if (rows.length > 0) {
+      return res.status(400).json({ error: "อีเมลนี้มีผู้ใช้งานแล้ว" });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // สร้าง URL avatar
+    const avatarUrl = `/uploads/avatars/${file.filename}`;
+
+    // wallet เริ่มต้นเป็น 0
+    const wallet = 0;
+    const type = "user";
+
+    // บันทึกลง SQL DB
+    const [result] = await conn.query(
+      "INSERT INTO users (name, email, password, type, avatar, wallet) VALUES (?, ?, ?, ?, ?, ?)",
+      [name, email, hashedPassword, type, avatarUrl, wallet]
+    );
+
+    const sUid = result.insertId;
+    return res.json({
+      message: "สมัครสมาชิกสำเร็จ",
+      user: {
+        uid: sUid,
         name,
         email,
-        type: "user",
-        avatarUrl: avatar ? `${baseUrl}/uploads/${avatar}` : null
-      });
+        type,
+        avatar: avatarUrl,
+        wallet,
+      },
     });
-  } catch (error) {
-    console.error("❌ Hash error:", error.message);
-    res.status(500).json({ error: "เกิดข้อผิดพลาด" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
+
+
 
 // ------------------- LOGIN -------------------
 app.post("/login", (req, res) => {
