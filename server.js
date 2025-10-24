@@ -1,14 +1,31 @@
 import express from "express";
 import mysql from "mysql2";
 import cors from "cors";
-import bodyParser from "body-parser";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
-// MySQL connection
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ✅ CORS
+app.use(cors({
+  origin: ["http://localhost:4200"],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
+
+// ✅ Static upload folder
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+// MySQL
 const db = mysql.createConnection({
   host: "202.28.34.210",
   user: "65011212194",
@@ -22,82 +39,58 @@ db.connect(err => {
   else console.log("✅ Connected to MySQL database");
 });
 
-
+// Multer
 const avatarStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, "../uploads/avatars");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}_${file.originalname}`;
-    cb(null, uniqueName);
-  },
+    cb(null, `${Date.now()}_${file.originalname}`);
+  }
 });
 
 const uploadAvatar = multer({ storage: avatarStorage });
 
 // ------------------- REGISTER -------------------
-router.post("/register", uploadAvatar.single("avatar"), async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    const file = req.file;
+app.post("/register", uploadAvatar.single("avatar"), (req, res) => {
+  const { name, email, password } = req.body;
+  const file = req.file;
 
-    if (!name || !email || !password || !file) {
-      return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบและอัปโหลดรูป" });
-    }
+  if (!name || !email || !password || !file)
+    return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบและอัปโหลดรูป" });
 
-    // ตรวจสอบ email ซ้ำ
-    const [rows] = await conn.query("SELECT * FROM users WHERE email = ?", [email]);
-    if (rows.length > 0) {
-      return res.status(400).json({ error: "อีเมลนี้มีผู้ใช้งานแล้ว" });
-    }
+  // ตรวจสอบ email
+  db.query("SELECT * FROM users WHERE email = ?", [email], async (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (results.length > 0) return res.status(400).json({ error: "อีเมลนี้มีผู้ใช้งานแล้ว" });
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // สร้าง URL avatar
     const avatarUrl = `/uploads/avatars/${file.filename}`;
-
-    // wallet เริ่มต้นเป็น 0
     const wallet = 0;
     const type = "user";
 
-    // บันทึกลง SQL DB
-    const [result] = await conn.query(
+    db.query(
       "INSERT INTO users (name, email, password, type, avatar, wallet) VALUES (?, ?, ?, ?, ?, ?)",
-      [name, email, hashedPassword, type, avatarUrl, wallet]
+      [name, email, hashedPassword, type, avatarUrl, wallet],
+      (err2, result) => {
+        if (err2) return res.status(500).json({ error: err2.message });
+        res.json({
+          message: "สมัครสมาชิกสำเร็จ",
+          user: { uid: result.insertId, name, email, type, avatar: avatarUrl, wallet }
+        });
+      }
     );
-
-    const sUid = result.insertId;
-    return res.json({
-      message: "สมัครสมาชิกสำเร็จ",
-      user: {
-        uid: sUid,
-        name,
-        email,
-        type,
-        avatar: avatarUrl,
-        wallet,
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
-  }
+  });
 });
-
-
 
 // ------------------- LOGIN -------------------
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "กรุณาใส่ email และ password" });
 
-  const sql = "SELECT * FROM users WHERE email = ?";
-  db.query(sql, [email], async (err, results) => {
+  db.query("SELECT * FROM users WHERE email = ?", [email], async (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
     if (results.length === 0) return res.status(404).json({ error: "ไม่พบบัญชีผู้ใช้" });
 
@@ -112,11 +105,10 @@ app.post("/login", (req, res) => {
       name: user.name,
       email: user.email,
       role: user.type,
-      avatarUrl: user.avatar ? `${baseUrl}/uploads/${user.avatar}` : null
+      avatarUrl: user.avatar ? `${baseUrl}/uploads/avatars/${user.avatar}` : null
     });
   });
 });
-
 // ------------------- เติมเงิน -------------------
 app.post("/wallet", (req, res) => {
   const { uid, wallet } = req.body;
@@ -249,9 +241,6 @@ app.post("/api/games",upload.single("image"), async (req, res) => {
   );
 });
 
-
-// ------------------- Root -------------------
 app.get("/", (req, res) => res.send("✅ GameShop API is running successfully!"));
 
-// ✅ Export สำหรับ Vercel
 export default app;
