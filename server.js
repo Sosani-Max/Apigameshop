@@ -108,6 +108,61 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
+// ------------------- ADD GAME -------------------
+app.post("/addgame", upload.single("image"), async (req, res) => {
+  try {
+    const { game_name, price, description, category_id } = req.body;
+    const file = req.file;
+
+    // ตรวจสอบข้อมูลพื้นฐาน
+    if (!game_name || !price || !description || !category_id) {
+      return res.status(400).json({ error: "กรุณากรอกข้อมูลเกมให้ครบ" });
+    }
+
+    // สร้าง release_date แบบสุ่ม (ไม่เกินวันนี้)
+    const now = new Date();
+    const randomTime = Math.floor(Math.random() * now.getTime());
+    const release_date = new Date(randomTime);
+
+    let imageUrl = null;
+
+    // ถ้ามีรูป ให้ upload ไป Cloudinary
+    if (file) {
+      const uploadResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: "games" },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        streamifier.createReadStream(file.buffer).pipe(stream);
+      });
+      imageUrl = uploadResult.secure_url;
+    }
+
+    const sale_count = 0;
+
+    // บันทึกลงฐานข้อมูล
+    const [result] = await db.query(
+      `INSERT INTO games 
+       (game_name, price, description, category_id, release_date, sale_count, image) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [game_name, price, description, category_id, release_date, sale_count, imageUrl]
+    );
+
+    const gameId = result.insertId;
+
+    return res.json({
+      message: "เพิ่มเกมสำเร็จ",
+      game: { id: gameId, game_name, price, description, category_id, release_date, sale_count, image: imageUrl },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
+  }
+});
+
 
 // ------------------- เติมเงิน -------------------
 app.post("/wallet", async (req, res) => {
