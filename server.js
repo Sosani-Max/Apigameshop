@@ -166,16 +166,22 @@ app.post("/addgame", upload.single("image"), async (req, res) => {
 // ------------------- GET ALL GAMES -------------------
 app.get("/allgame", async (req, res) => {
   try {
-    // ดึงข้อมูลทั้งหมดจาก table games
-    const [rows] = await db.query("SELECT * FROM games ORDER BY release_date DESC");
+    const [rows] = await db.query(`
+      SELECT 
+        g.*, 
+        c.type AS category_type
+      FROM games g
+      LEFT JOIN category c ON g.category_id = c.category_id
+      ORDER BY g.release_date DESC
+    `);
 
-    // ส่ง JSON กลับ front-end
     return res.json({ games: rows });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
+
 
 
 
