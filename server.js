@@ -182,6 +182,36 @@ app.get("/allgame", async (req, res) => {
   }
 });
 
+app.get("/searchgame", async (req, res) => {
+  try {
+    const search = req.query.q || ""; // รับคำค้นจาก query string
+
+    const [rows] = await db.query(
+      `
+      SELECT 
+        g.game_id,
+        g.game_name,
+        g.price,
+        g.image,
+        g.release_date,
+        g.description,
+        g.sale_count,
+        c.type AS category_type
+      FROM games g
+      LEFT JOIN category c ON g.category_id = c.category_id
+      WHERE g.game_name LIKE ?
+      ORDER BY g.release_date DESC
+      `,
+      [`%${search}%`]
+    );
+
+    res.json({ games: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
+  }
+});
+
 
 
 
