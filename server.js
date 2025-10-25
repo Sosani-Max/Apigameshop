@@ -166,9 +166,8 @@ app.post("/addgame", upload.single("image"), async (req, res) => {
 // ------------------- GET ALL GAMES -------------------
 app.get("/allgame", async (req, res) => {
   try {
-    const [rows] = await db.query(
-      "SELECT game_name, price, image FROM games ORDER BY release_date DESC"
-    );
+    // ดึงข้อมูลทั้งหมดจาก table games
+    const [rows] = await db.query("SELECT * FROM games ORDER BY release_date DESC");
 
     // ส่ง JSON กลับ front-end
     return res.json({ games: rows });
@@ -177,6 +176,7 @@ app.get("/allgame", async (req, res) => {
     return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
+
 
 
 // ------------------- เติมเงิน -------------------
