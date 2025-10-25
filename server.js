@@ -163,6 +163,21 @@ app.post("/addgame", upload.single("image"), async (req, res) => {
   }
 });
 
+// ------------------- GET ALL GAMES -------------------
+app.get("/allgame", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT game_name, price, image FROM games ORDER BY release_date DESC"
+    );
+
+    // ส่ง JSON กลับ front-end
+    return res.json({ games: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
+  }
+});
+
 
 // ------------------- เติมเงิน -------------------
 app.post("/wallet", async (req, res) => {
