@@ -213,9 +213,10 @@ app.get("/searchgame", async (req, res) => {
   }
 });
 
-app.get('/topsell', async (req, res) => {
+// ------------------- GET TOP SELL -------------------
+app.get("/topsell", async (req, res) => {
   try {
-    const [rows] = await pool.query(`
+    const [rows] = await db.query(`
       SELECT 
         id AS gameId,
         game_name,
@@ -224,15 +225,26 @@ app.get('/topsell', async (req, res) => {
         category_id,
         release_date,
         sale_count,
-        image AS imageUrl,
-        @rank := IF(@prev = sale_count, @rank, @rank + 1) AS rank,
-        @prev := sale_count
-      FROM games, (SELECT @rank := 0, @prev := NULL) r
+        image AS imageUrl
+      FROM games
       ORDER BY sale_count DESC
-      LIMIT 10;
+      LIMIT 10
     `);
 
-    res.json({ topGames: rows });
+    // จัดอันดับแบบ JS (สำหรับกรณี sale_count เท่ากัน)
+    let prevSale = null;
+    let rank = 0;
+    let count = 0;
+    const topGames = rows.map(game => {
+      count++;
+      if (game.sale_count !== prevSale) {
+        rank = count;
+        prevSale = game.sale_count;
+      }
+      return { ...game, rank };
+    });
+
+    res.json({ topGames });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -273,11 +285,7 @@ app.post("/wallet", async (req, res) => {
 
 
 
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
-});
-
-// ------------------- Root -------------------
 app.get("/", (req, res) => res.send("✅ GameShop API is running successfully!"));
 
+// **ไม่ต้องใช้ app.listen() สำหรับ Vercel**
 export default app;
