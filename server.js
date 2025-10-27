@@ -226,7 +226,7 @@ app.get('/topsell', async (req, res) => {
         category_id,
         release_date,
         sale_count,
-        image AS imageUrl
+        image 
       FROM games
       ORDER BY sale_count DESC
       LIMIT 10
