@@ -214,11 +214,12 @@ app.get("/searchgame", async (req, res) => {
 });
 
 // ------------------- GET TOP SELL -------------------
-app.get("/topsell", async (req, res) => {
+app.get('/topsell', async (req, res) => {
   try {
+    // ดึง top 10 เกมตาม sale_count
     const [rows] = await db.query(`
       SELECT 
-        id AS gameId,
+        game_id AS gameId,
         game_name,
         price,
         description,
@@ -231,25 +232,24 @@ app.get("/topsell", async (req, res) => {
       LIMIT 10
     `);
 
-    // จัดอันดับแบบ JS (สำหรับกรณี sale_count เท่ากัน)
-    let prevSale = null;
+    // กำหนด rank จาก array ฝั่ง Node.js
     let rank = 0;
-    let count = 0;
-    const topGames = rows.map(game => {
-      count++;
-      if (game.sale_count !== prevSale) {
-        rank = count;
-        prevSale = game.sale_count;
+    let prevCount = null;
+    rows.forEach((game, index) => {
+      if (game.sale_count !== prevCount) {
+        rank = index + 1;
+        prevCount = game.sale_count;
       }
-      return { ...game, rank };
+      game.rank = rank;
     });
 
-    res.json({ topGames });
+    res.json({ topGames: rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });
+
 
 
 // ------------------- เติมเงิน -------------------
