@@ -102,6 +102,7 @@ app.post("/login", async (req, res) => {
       email: user.email,
       role: user.type,
       avatarUrl: user.avatar || null,
+      wallet: user.wallet,
     });
   } catch (err) {
     console.error(err);
