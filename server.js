@@ -239,12 +239,42 @@ app.post("/wallet", async (req, res) => {
       oldWallet: currentWallet,
       added: amount,
       newWallet,
-      avatarUrl: rows[0].avatar || null,
+  
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
+});
+
+app.get('/topsell', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        id AS gameId,
+        game_name,
+        price,
+        description,
+        category_id,
+        release_date,
+        sale_count,
+        image AS imageUrl,
+        @rank := IF(@prev = sale_count, @rank, @rank + 1) AS rank,
+        @prev := sale_count
+      FROM games, (SELECT @rank := 0, @prev := NULL) r
+      ORDER BY sale_count DESC
+      LIMIT 10;
+    `);
+
+    res.json({ topGames: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
 });
 
 // ------------------- Root -------------------
