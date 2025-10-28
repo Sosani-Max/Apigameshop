@@ -266,27 +266,27 @@ app.post("/code", async (req, res) => {
 
     const codeData = rows[0];
 
-    // แปลง user_use เป็น array string
+    // แปลง user_use เป็น array ของ uid ที่เคยใช้
     let usedList = [];
     if (codeData.user_use && codeData.user_use.trim() !== "") {
       usedList = codeData.user_use.split(",").map(s => s.trim());
     }
 
-    // ตรวจสอบว่าผู้ใช้เคยใช้โค้ดแล้วหรือไม่
+    // ตรวจสอบว่า uid เคยใช้โค้ดนี้ไปแล้วหรือยัง
     if (usedList.includes(String(uid))) {
       return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
     }
 
-    // เพิ่ม uid ใหม่เข้า usedList
+    // ✅ เพิ่ม uid ใหม่เข้า usedList (ซ้อนต่อท้าย)
     usedList.push(String(uid));
 
-    // บันทึกกลับ DB เป็น string comma-separated
+    // ✅ บันทึกกลับ DB โดยใช้ codename เป็นเงื่อนไข
     await db.query(
       "UPDATE codes SET user_use = ? WHERE codename = ?",
       [usedList.join(","), code]
     );
 
-    // ส่งเปอร์เซ็นต์ส่วนลดกลับ
+    // ✅ ส่งเปอร์เซ็นต์ส่วนลดกลับไป
     const persen = Number(codeData.persen || 0);
     res.json({ message: "โค้ดผ่าน", persen });
 
@@ -295,6 +295,7 @@ app.post("/code", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดในเซิร์ฟเวอร์" });
   }
 });
+
 
 
 
