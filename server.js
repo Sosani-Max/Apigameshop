@@ -255,7 +255,7 @@ app.post("/code", async (req, res) => {
   if (!uid || !code) return res.status(400).json({ error: "กรุณาส่ง uid และ code" });
 
   try {
-    const [rows] = await db.query("SELECT * FROM codes WHERE code = ?", [code]);
+    const [rows] = await db.query("SELECT * FROM codes WHERE codename = ?", [code]);
 
     if (rows.length === 0) {
       return res.status(400).json({ error: "ไม่พบโค้ดนี้" });
