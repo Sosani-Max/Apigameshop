@@ -266,24 +266,30 @@ app.post("/code", async (req, res) => {
 
     const codeData = rows[0];
 
-    // ✅ แปลง user_use จาก JSON เป็น array (ถ้า null ให้เริ่มเป็น array ว่าง)
+    // ✅ แปลง user_use จาก JSON เป็น array
     let usedList = [];
     if (codeData.user_use) {
       try {
         usedList = JSON.parse(codeData.user_use);
+        if (!Array.isArray(usedList)) usedList = [];
       } catch {
-        // ถ้า parse ไม่ได้ เช่นเก็บผิดรูปแบบ ก็เริ่มใหม่
         usedList = [];
       }
     }
 
-    // ตรวจสอบว่า uid นี้ใช้แล้วหรือยัง
-    if (usedList.includes(String(uid))) {
+    // ✅ แปลงทุกค่าภายใน array เป็น string เพื่อเทียบง่าย
+    usedList = usedList.map(u => String(u));
+
+    // ✅ แปลง uid เป็น string เช่นกัน
+    const uidStr = String(uid);
+
+    // ✅ ตรวจสอบว่าซ้ำไหม
+    if (usedList.includes(uidStr)) {
       return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
     }
 
-    // ✅ เพิ่ม uid ใหม่เข้าไปใน array
-    usedList.push(String(uid));
+    // ✅ เพิ่ม uid ใหม่เข้า array (ถ้าไม่ซ้ำ)
+    usedList.push(uidStr);
 
     // ✅ บันทึกกลับ DB เป็น JSON string
     await db.query(
@@ -291,7 +297,7 @@ app.post("/code", async (req, res) => {
       [JSON.stringify(usedList), code]
     );
 
-    // ส่งเปอร์เซ็นต์ส่วนลดกลับ
+    // ✅ ส่งเปอร์เซ็นต์ส่วนลดกลับ
     const persen = Number(codeData.persen || 0);
     res.json({ message: "โค้ดผ่าน", persen });
 
