@@ -319,17 +319,24 @@ app.post("/buygame", async (req, res) => {
 
     // บันทึก order ใหม่ทุกครั้ง
     const orderDate = new Date();
-    await db.query(
-      "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
-      [uid, games.length, JSON.stringify(games), orderDate]
-    );
 
-    res.json({
-      message: "ซื้อเกมสำเร็จ",
-      totalPrice,
-      newWallet: userWallet - totalPrice,
-      games: games.map(g => ({ game_id: g.game_id, game_name: g.game_name, image: g.image }))
-    });
+// แปลง array ของ games เป็น array ของ game_id
+const gameIds = games.map(g => g.game_id); // [1,5,9]
+
+// เก็บใน DB เป็น string แยกด้วย comma
+const gameIdsStr = gameIds.join(','); // "1,5,9"
+
+await db.query(
+  "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
+  [uid, games.length, gameIdsStr, orderDate]
+);
+
+res.json({
+  message: "ซื้อเกมสำเร็จ",
+  totalPrice,
+  newWallet: userWallet - totalPrice,
+  games: games.map(g => ({ game_id: g.game_id, game_name: g.game_name, image: g.image }))
+});
 
   } catch (err) {
     console.error(err);
