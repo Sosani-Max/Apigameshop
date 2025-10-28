@@ -317,12 +317,12 @@ app.post("/buygame", async (req, res) => {
 
     // ถ้ามีโค้ด ก็บันทึกว่าใช้โค้ดแล้ว
     if (discountCode) {
-      const [codeRows] = await db.query("SELECT * FROM codes WHERE code = ?", [discountCode]);
+      const [codeRows] = await db.query("SELECT * FROM codes WHERE codename = ?", [discountCode]);
       if (codeRows.length > 0) {
         let usedList = [];
         try { usedList = JSON.parse(codeRows[0].user_use || "[]"); } catch {}
         usedList.push(uid);
-        await db.query("UPDATE codes SET user_use = ? WHERE code = ?", [JSON.stringify(usedList), discountCode]);
+        await db.query("UPDATE codes SET user_use = ? WHERE codename = ?", [JSON.stringify(usedList), discountCode]);
       }
     }
 
