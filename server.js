@@ -287,7 +287,7 @@ app.post("/buygame", async (req, res) => {
   }
 
   try {
-    // ตรวจสอบ wallet
+    // ตรวจสอบ wallet ของผู้ใช้
     const [userRows] = await db.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
     if (userRows.length === 0) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
 
@@ -305,11 +305,14 @@ app.post("/buygame", async (req, res) => {
     orderRows.forEach(row => {
       let ids = [];
       try {
-        ids = Array.isArray(row.game_all) ? row.game_all : JSON.parse(row.game_all || "[]");
+        const parsed = JSON.parse(row.game_all || "[]"); // parse JSON
+        if (Array.isArray(parsed)) {
+          ids = parsed.map(id => String(id));
+        }
       } catch {
         ids = [];
       }
-      ids.forEach(id => purchasedGameIds.add(String(id)));
+      ids.forEach(id => purchasedGameIds.add(id));
     });
 
     const duplicateGames = games.filter(g => purchasedGameIds.has(String(g.game_id)));
@@ -347,6 +350,7 @@ app.post("/buygame", async (req, res) => {
       [uid, games.length, JSON.stringify(gameIdsArray), orderDate]
     );
 
+    // ส่ง response
     res.json({
       message: "ซื้อเกมสำเร็จ",
       totalPrice: purchaseTotal,
@@ -359,7 +363,6 @@ app.post("/buygame", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
-
 
 // ------------------- เติมเงิน -------------------
 app.post("/wallet", async (req, res) => {
