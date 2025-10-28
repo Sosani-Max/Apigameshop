@@ -318,7 +318,8 @@ app.post("/buygame", async (req, res) => {
   try {
     // ตรวจสอบ wallet
     const [userRows] = await db.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
-    if (!userRows || userRows.length === 0) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
+    if (!userRows || userRows.length === 0)
+      return res.status(404).json({ error: "ไม่พบผู้ใช้" });
 
     const userWallet = Number(userRows[0].wallet || 0);
     const purchaseTotal = Number(totalPrice || 0);
@@ -335,7 +336,7 @@ app.post("/buygame", async (req, res) => {
       let ids = [];
       try {
         const parsed = JSON.parse(row.game_all || "[]");
-        if (Array.isArray(parsed)) ids = parsed.map(id => String(id)); // แปลงเป็น string
+        if (Array.isArray(parsed)) ids = parsed.map(id => String(id));
       } catch {
         ids = [];
       }
@@ -350,7 +351,10 @@ app.post("/buygame", async (req, res) => {
     }
 
     // หัก wallet
-    await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [userWallet - purchaseTotal, uid]);
+    await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [
+      userWallet - purchaseTotal,
+      uid
+    ]);
 
     // จัดการโค้ดส่วนลด
     if (discountCode) {
@@ -363,28 +367,45 @@ app.post("/buygame", async (req, res) => {
         } catch {
           usedList = [];
         }
-        usedList.push(uid);
-        await db.query("UPDATE codes SET user_use = ? WHERE codename = ?", [JSON.stringify(usedList), discountCode]);
+        const uidStr = String(uid);
+        if (!usedList.includes(uidStr)) {
+          usedList.push(uidStr);
+          await db.query("UPDATE codes SET user_use = ? WHERE codename = ?", [
+            JSON.stringify(usedList),
+            discountCode
+          ]);
+        }
       }
     }
 
     // บันทึก order ใหม่
     const orderDate = new Date();
-    const gameIdsArray = games.map(g => String(g.game_id)); // string array
+    const gameIdsArray = games.map(g => String(g.game_id));
 
     await db.query(
       "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
       [uid, games.length, JSON.stringify(gameIdsArray), orderDate]
     );
 
+    // ✅ เพิ่ม sale_count ให้แต่ละเกม
+    for (const g of games) {
+      await db.query(
+        "UPDATE games SET sale_count = COALESCE(sale_count, 0) + 1 WHERE game_id = ?",
+        [g.game_id]
+      );
+    }
+
     // ส่ง response
     res.json({
       message: "ซื้อเกมสำเร็จ",
       totalPrice: purchaseTotal,
       newWallet: userWallet - purchaseTotal,
-      games: games.map(g => ({ game_id: String(g.game_id), game_name: g.game_name, image: g.image }))
+      games: games.map(g => ({
+        game_id: String(g.game_id),
+        game_name: g.game_name,
+        image: g.image
+      }))
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
