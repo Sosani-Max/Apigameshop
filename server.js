@@ -287,10 +287,9 @@ app.post("/buygame", async (req, res) => {
   }
 
   try {
-    // ตรวจสอบ wallet ของผู้ใช้
+    // 1. ตรวจสอบ wallet
     const [userRows] = await db.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
-    if (userRows.length === 0) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
-
+    if (!userRows || userRows.length === 0) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
     const userWallet = Number(userRows[0].wallet || 0);
     const purchaseTotal = Number(totalPrice || 0);
 
@@ -298,16 +297,16 @@ app.post("/buygame", async (req, res) => {
       return res.status(400).json({ error: "ยอดเงินในกระเป๋าไม่เพียงพอ" });
     }
 
-    // ตรวจสอบ duplicate เกมจาก orders
-    const [orderRows] = await db.query("SELECT game_all FROM orders WHERE user_id = ?", [uid]);
+    // 2. ตรวจสอบ duplicate เกม
+    const [rows] = await db.query("SELECT game_all FROM orders WHERE user_id = ?", [uid]);
     const purchasedGameIds = new Set();
 
-    orderRows.forEach(row => {
+    rows.forEach(row => {
       let ids = [];
       try {
-        const parsed = JSON.parse(row.game_all || "[]"); // parse JSON
-        if (Array.isArray(parsed)) {
-          ids = parsed.map(id => String(id));
+        if (typeof row.game_all === "string") {
+          const parsed = JSON.parse(row.game_all);
+          if (Array.isArray(parsed)) ids = parsed.map(id => String(id));
         }
       } catch {
         ids = [];
@@ -322,10 +321,10 @@ app.post("/buygame", async (req, res) => {
       });
     }
 
-    // หัก wallet
+    // 3. หัก wallet
     await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [userWallet - purchaseTotal, uid]);
 
-    // จัดการโค้ดส่วนลด
+    // 4. จัดการโค้ดส่วนลด
     if (discountCode) {
       const [codeRows] = await db.query("SELECT * FROM codes WHERE codename = ?", [discountCode]);
       if (codeRows.length > 0) {
@@ -341,16 +340,16 @@ app.post("/buygame", async (req, res) => {
       }
     }
 
-    // บันทึก order ใหม่ (เก็บ game_all เป็น JSON array)
+    // 5. บันทึก order ใหม่
     const orderDate = new Date();
-    const gameIdsArray = games.map(g => g.game_id);
+    const gameIdsArray = games.map(g => g.game_id); // JSON array
 
     await db.query(
       "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
       [uid, games.length, JSON.stringify(gameIdsArray), orderDate]
     );
 
-    // ส่ง response
+    // 6. ส่ง response
     res.json({
       message: "ซื้อเกมสำเร็จ",
       totalPrice: purchaseTotal,
