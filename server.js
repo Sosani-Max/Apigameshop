@@ -411,7 +411,7 @@ app.get("/mygame", async (req, res) => {
         category: g.category,   // category type
         description: g.description,
         release_date: g.release_date,
-        image: g.imaged
+        image: g.image
       };
     });
 
