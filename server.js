@@ -253,7 +253,9 @@ app.get('/topsell', async (req, res) => {
 app.post("/buygame", async (req, res) => {
   const connection = db; // assume db เป็น MySQL promise pool
   try {
-    const { uid, games, codes } = req.body;
+    const { uid, games } = req.body;
+    const discountCode = req.body.discountCode || null;
+
     if (!uid || !games || !Array.isArray(games) || games.length === 0) {
       return res.status(400).json({ error: "กรุณาส่ง uid และเกมที่ต้องการซื้อ" });
     }
@@ -265,9 +267,10 @@ app.post("/buygame", async (req, res) => {
       [uid]
     );
 
-    const purchasedGames = ordersRows
-      .map(order => JSON.parse(order.game_all))
-      .flat();
+    const purchasedGames = ordersRows.map(order => {
+      try { return JSON.parse(order.game_all); }
+      catch { return []; }
+    }).flat();
 
     const alreadyPurchased = games.filter(g => purchasedGames.includes(g.game_id));
     if (alreadyPurchased.length > 0) {
@@ -281,11 +284,11 @@ app.post("/buygame", async (req, res) => {
     let totalPrice = games.reduce((sum, g) => sum + g.price, 0);
 
     // 3️⃣ ตรวจสอบโค้ดส่วนลด
-    let usedList = [];
-    if (codes) {
+    let usedList = [];   
+    if (discountCode) {
       const [codeRows] = await connection.query(
         "SELECT * FROM codes WHERE code = ?",
-        [codes]
+        [discountCode]
       );
 
       if (codeRows.length === 0) {
@@ -293,7 +296,7 @@ app.post("/buygame", async (req, res) => {
       }
 
       const codeData = codeRows[0];
-      usedList = JSON.parse(codeData.user_use || "[]");
+      try { usedList = JSON.parse(codeData.user_use || "[]"); } catch { usedList = []; }
 
       if (usedList.includes(uid)) {
         return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
@@ -315,11 +318,11 @@ app.post("/buygame", async (req, res) => {
     await connection.query("UPDATE users SET wallet = ? WHERE uid = ?", [newWallet, uid]);
 
     // 6️⃣ หลังจากหักเงินสำเร็จแล้ว บันทึกว่าใช้โค้ดแล้ว
-    if (codes) {
+    if (discountCode) {
       usedList.push(uid);
       await connection.query(
         "UPDATE codes SET user_use = ? WHERE code = ?",
-        [JSON.stringify(usedList), codes]
+        [JSON.stringify(usedList), discountCode]
       );
     }
 
@@ -342,6 +345,7 @@ app.post("/buygame", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
+
 
 
 
