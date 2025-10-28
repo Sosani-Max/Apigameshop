@@ -280,8 +280,8 @@ app.post("/buygame", async (req, res) => {
       });
     }
 
-    // 2️⃣ คำนวณราคารวม
-    let totalPrice = games.reduce((sum, g) => sum + g.price, 0);
+    // 2️⃣ คำนวณราคารวม (บังคับแปลงเป็น number)
+    let totalPrice = games.reduce((sum, g) => sum + Number(g.price || 0), 0);
 
     // 3️⃣ ตรวจสอบโค้ดส่วนลด
     let usedList = [];   
@@ -302,13 +302,18 @@ app.post("/buygame", async (req, res) => {
         return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
       }
 
-      const discountPercent = codeData.persen || 0;
+      const discountPercent = Number(codeData.persen || 0);
       totalPrice = totalPrice - (totalPrice * discountPercent / 100);
     }
 
     // 4️⃣ ตรวจสอบ wallet
     const [userRows] = await connection.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
-    const userWallet = userRows[0]?.wallet || 0;
+    const userWallet = Number(userRows[0]?.wallet || 0);
+
+    if (isNaN(userWallet) || isNaN(totalPrice)) {
+      return res.status(400).json({ error: "เกิดข้อผิดพลาดในการคำนวณเงิน" });
+    }
+
     if (userWallet < totalPrice) {
       return res.status(400).json({ error: "ยอดเงินในกระเป๋าไม่เพียงพอ" });
     }
@@ -345,6 +350,7 @@ app.post("/buygame", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
+
 
 
 
