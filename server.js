@@ -266,30 +266,24 @@ app.post("/code", async (req, res) => {
 
     const codeData = rows[0];
 
-    // ✅ แปลง user_use จาก JSON เป็น array
+    // ✅ แปลง user_use จาก JSON เป็น array (ถ้า null ให้เริ่มเป็น array ว่าง)
     let usedList = [];
     if (codeData.user_use) {
       try {
         usedList = JSON.parse(codeData.user_use);
-        if (!Array.isArray(usedList)) usedList = [];
       } catch {
+        // ถ้า parse ไม่ได้ เช่นเก็บผิดรูปแบบ ก็เริ่มใหม่
         usedList = [];
       }
     }
 
-    // ✅ แปลงทุกค่าภายใน array เป็น string เพื่อเทียบง่าย
-    usedList = usedList.map(u => String(u));
-
-    // ✅ แปลง uid เป็น string เช่นกัน
-    const uidStr = String(uid);
-
-    // ✅ ตรวจสอบว่าซ้ำไหม
-    if (usedList.includes(uidStr)) {
+    // ตรวจสอบว่า uid นี้ใช้แล้วหรือยัง
+    if (usedList.includes(String(uid))) {
       return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
     }
 
-    // ✅ เพิ่ม uid ใหม่เข้า array (ถ้าไม่ซ้ำ)
-    usedList.push(uidStr);
+    // ✅ เพิ่ม uid ใหม่เข้าไปใน array
+    usedList.push(String(uid));
 
     // ✅ บันทึกกลับ DB เป็น JSON string
     await db.query(
@@ -297,7 +291,7 @@ app.post("/code", async (req, res) => {
       [JSON.stringify(usedList), code]
     );
 
-    // ✅ ส่งเปอร์เซ็นต์ส่วนลดกลับ
+    // ส่งเปอร์เซ็นต์ส่วนลดกลับ
     const persen = Number(codeData.persen || 0);
     res.json({ message: "โค้ดผ่าน", persen });
 
@@ -309,170 +303,87 @@ app.post("/code", async (req, res) => {
 
 
 app.post("/buygame", async (req, res) => {
-  const { uid, games, discountCode } = req.body;
-  let { totalPrice } = req.body; // may be undefined / string / number
+  const { uid, games, discountCode, totalPrice } = req.body;
 
   if (!uid || !games || !Array.isArray(games) || games.length === 0) {
     return res.status(400).json({ error: "กรุณาส่ง uid และเกมที่ต้องการซื้อ" });
   }
 
-  // Helper: safe number parse and round 2 decimals
-  const toNumber = (v) => {
-    const n = Number(v);
-    if (Number.isFinite(n)) {
-      return Math.round(n * 100) / 100;
-    }
-    return NaN;
-  };
-
   try {
-    // 0. ดึง wallet ของ user
+    // ตรวจสอบ wallet
     const [userRows] = await db.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
     if (!userRows || userRows.length === 0) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
 
-    const rawWallet = userRows[0].wallet;
-    const userWallet = toNumber(rawWallet);
-    if (isNaN(userWallet)) {
-      return res.status(500).json({ error: "ข้อมูล wallet ของผู้ใช้ไม่ถูกต้อง" });
-    }
+    const userWallet = Number(userRows[0].wallet || 0);
+    const purchaseTotal = Number(totalPrice || 0);
 
-    // 1. ถ้า totalPrice ที่ส่งมามีค่าและเป็นตัวเลขใช้ได้ ให้ใช้ แต่ถ้าไม่ ให้คำนวณจาก games[].price
-    let purchaseTotal = toNumber(totalPrice);
-    if (isNaN(purchaseTotal)) {
-      // คำนวณจาก games[].price (ป้องกันกรณี price เป็น string)
-      purchaseTotal = 0;
-      for (const g of games) {
-        const p = toNumber(g.price);
-        if (isNaN(p)) {
-          return res.status(400).json({ error: `ข้อมูลราคาของเกม (${g.game_name || g.game_id}) ไม่ถูกต้อง` });
-        }
-        purchaseTotal += p;
-      }
-      purchaseTotal = Math.round(purchaseTotal * 100) / 100;
-    }
-
-    // 2. ถ้ามี discountCode -> ตรวจหาเปอร์เซ็นต์และใช้ลด (ถ้าจำเป็น)
-    let appliedDiscountPercent = 0;
-    if (discountCode) {
-      const [codeRows] = await db.query("SELECT * FROM codes WHERE codename = ?", [discountCode]);
-      if (codeRows.length > 0) {
-        const codeData = codeRows[0];
-
-        // อ่าน persen เป็น number
-        const persen = toNumber(codeData.persen);
-        if (!isNaN(persen) && persen > 0) {
-          appliedDiscountPercent = persen;
-          // คำนวณ new total
-          const discounted = Math.round((purchaseTotal * (100 - persen) / 100) * 100) / 100;
-          purchaseTotal = discounted;
-        }
-      } else {
-        // ถ้าโค้ดไม่เจอ เราจะไม่ปฏิเสธการซื้อ — แต่ถ้าต้องการปฏิเสธให้ uncomment บรรทัดนี้:
-        // return res.status(400).json({ error: "ไม่พบโค้ดส่วนลด" });
-      }
-    }
-
-    // 3. ตรวจ purchaseTotal valid และ wallet เพียงพอ
-    if (isNaN(purchaseTotal) || purchaseTotal < 0) {
-      return res.status(400).json({ error: "ข้อมูลราคาไม่ถูกต้อง" });
-    }
     if (userWallet < purchaseTotal) {
       return res.status(400).json({ error: "ยอดเงินในกระเป๋าไม่เพียงพอ" });
     }
 
-    // 4. ตรวจ duplicate (user เคยมีเกมนี้หรือไม่)
-    const [orderRows] = await db.query("SELECT game_all FROM orders WHERE user_id = ?", [uid]);
+    // ตรวจสอบ duplicate เกม
+    const [rows] = await db.query("SELECT game_all FROM orders WHERE user_id = ?", [uid]);
     const purchasedGameIds = new Set();
-    orderRows.forEach(row => {
+
+    rows.forEach(row => {
+      let ids = [];
       try {
         const parsed = JSON.parse(row.game_all || "[]");
-        if (Array.isArray(parsed)) {
-          parsed.forEach(id => purchasedGameIds.add(String(id)));
-        }
+        if (Array.isArray(parsed)) ids = parsed.map(id => String(id)); // แปลงเป็น string
       } catch {
-        // ignore parse errors
+        ids = [];
       }
+      ids.forEach(id => purchasedGameIds.add(id));
     });
 
     const duplicateGames = games.filter(g => purchasedGameIds.has(String(g.game_id)));
     if (duplicateGames.length > 0) {
-      return res.status(400).json({ error: `คุณมีเกมนี้อยู่แล้ว: ${duplicateGames.map(g => g.game_name).join(", ")}` });
-    }
-
-    // 5. เริ่ม transaction (ถ้าฐานข้อมูล/driver รองรับ)
-    // Using SQL BEGIN / COMMIT / ROLLBACK
-    await db.query("START TRANSACTION");
-
-    try {
-      // อัปเดต wallet ให้เป็นเลขทศนิยม 2 ตำแหน่ง
-      const newWallet = Math.round((userWallet - purchaseTotal) * 100) / 100;
-      await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [newWallet, uid]);
-
-      // ถ้ามี discountCode: update user_use (safe normalize)
-      if (discountCode) {
-        const [codeRows2] = await db.query("SELECT user_use FROM codes WHERE codename = ?", [discountCode]);
-        if (codeRows2.length > 0) {
-          let usedList = [];
-          const raw = codeRows2[0].user_use;
-          if (raw) {
-            // try parse JSON first
-            try {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) usedList = parsed.map(x => String(x));
-            } catch {
-              // if not JSON, try comma-separated
-              usedList = String(raw).split(",").map(s => s.trim()).filter(Boolean);
-            }
-          }
-          const uidStr = String(uid);
-          if (!usedList.includes(uidStr)) {
-            usedList.push(uidStr);
-            // save as JSON array (recommended)
-            await db.query("UPDATE codes SET user_use = ? WHERE codename = ?", [JSON.stringify(usedList), discountCode]);
-          }
-        }
-      }
-
-      // บันทึก order ใหม่ (game_all เป็น JSON array ของ string)
-      const orderDate = new Date();
-      const gameIdsArray = games.map(g => String(g.game_id));
-      await db.query(
-        "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
-        [uid, games.length, JSON.stringify(gameIdsArray), orderDate]
-      );
-
-      // อัปเดต sale_count ของแต่ละเกม (บวก 1 ต่อ 1 game ที่ซื้อ)
-      for (const g of games) {
-        await db.query(
-          "UPDATE games SET sale_count = COALESCE(sale_count, 0) + 1 WHERE game_id = ?",
-          [g.game_id]
-        );
-      }
-
-      // commit transaction
-      await db.query("COMMIT");
-
-      // ส่ง response สำเร็จ
-      return res.json({
-        message: "ซื้อเกมสำเร็จ",
-        totalPrice: purchaseTotal,
-        newWallet,
-        appliedDiscountPercent,
-        games: games.map(g => ({ game_id: String(g.game_id), game_name: g.game_name, image: g.image }))
+      return res.status(400).json({
+        error: `คุณมีเกมนี้อยู่แล้ว: ${duplicateGames.map(g => g.game_name).join(", ")}`
       });
-    } catch (txErr) {
-      // rollback on any tx error
-      await db.query("ROLLBACK");
-      console.error("Transaction error:", txErr);
-      return res.status(500).json({ error: "เกิดข้อผิดพลาดระหว่างบันทึกคำสั่งซื้อ" });
     }
+
+    // หัก wallet
+    await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [userWallet - purchaseTotal, uid]);
+
+    // จัดการโค้ดส่วนลด
+    if (discountCode) {
+      const [codeRows] = await db.query("SELECT * FROM codes WHERE codename = ?", [discountCode]);
+      if (codeRows.length > 0) {
+        let usedList = [];
+        try {
+          usedList = JSON.parse(codeRows[0].user_use || "[]");
+          if (!Array.isArray(usedList)) usedList = [];
+        } catch {
+          usedList = [];
+        }
+        usedList.push(uid);
+        await db.query("UPDATE codes SET user_use = ? WHERE codename = ?", [JSON.stringify(usedList), discountCode]);
+      }
+    }
+
+    // บันทึก order ใหม่
+    const orderDate = new Date();
+    const gameIdsArray = games.map(g => String(g.game_id)); // string array
+
+    await db.query(
+      "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
+      [uid, games.length, JSON.stringify(gameIdsArray), orderDate]
+    );
+
+    // ส่ง response
+    res.json({
+      message: "ซื้อเกมสำเร็จ",
+      totalPrice: purchaseTotal,
+      newWallet: userWallet - purchaseTotal,
+      games: games.map(g => ({ game_id: String(g.game_id), game_name: g.game_name, image: g.image }))
+    });
 
   } catch (err) {
-    console.error("Buygame error:", err);
-    return res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
+    console.error(err);
+    res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
-
 
 app.get("/mygame", async (req, res) => {
   const uid = req.query.uid;
