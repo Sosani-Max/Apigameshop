@@ -367,28 +367,32 @@ app.get("/mygame", async (req, res) => {
 
   try {
     // 1. ดึง order ของ user
-    const [orders] = await db.query("SELECT game_all, order_date FROM orders WHERE user_id = ?", [uid]);
-    
+    const [orders] = await db.query(
+      "SELECT game_all, order_date FROM orders WHERE user_id = ?",
+      [uid]
+    );
+
     // 2. รวม game_id ทั้งหมดจากทุก order
     const gameIds = [];
     orders.forEach(order => {
       try {
-        const ids = JSON.parse(order.game_all || "[]"); // JSON array ของ string
+        const ids = JSON.parse(order.game_all || "[]");
         if (Array.isArray(ids)) ids.forEach(id => gameIds.push(String(id)));
-      } catch {
-        // skip ถ้า parse ไม่ได้
-      }
+      } catch {}
     });
 
     if (gameIds.length === 0) return res.json({ games: [] });
 
-    // 3. ดึงรายละเอียดเกมจาก table games
+    // 3. ดึงรายละเอียดเกมและ category
     const [games] = await db.query(
-      `SELECT * FROM games WHERE game_id IN (?)`,
+      `SELECT g.*, c.type as category 
+       FROM games g
+       LEFT JOIN category c ON g.category_id = c.category_id
+       WHERE g.game_id IN (?)`,
       [gameIds]
     );
 
-    // 4. รวม order_date จาก orders ด้วย (optional)
+    // 4. รวม order_date จาก orders
     const gamesWithDate = games.map(g => {
       let purchasedDate = null;
       for (const order of orders) {
@@ -404,9 +408,11 @@ app.get("/mygame", async (req, res) => {
         game_id: String(g.game_id),
         game_name: g.name,
         price: g.price,
+        category: g.category,   // category type
         description: g.description,
         release_date: g.release_date,
-        image: g.image
+        image: g.image,
+        purchased_date
       };
     });
 
@@ -417,6 +423,7 @@ app.get("/mygame", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
+
 
 
 // ------------------- เติมเงิน -------------------
