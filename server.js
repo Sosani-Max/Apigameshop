@@ -287,7 +287,7 @@ app.post("/buygame", async (req, res) => {
   }
 
   try {
-    // ตรวจสอบผู้ใช้และ wallet
+    // ตรวจสอบ wallet
     const [userRows] = await db.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
     if (userRows.length === 0) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
 
@@ -298,13 +298,18 @@ app.post("/buygame", async (req, res) => {
       return res.status(400).json({ error: "ยอดเงินในกระเป๋าไม่เพียงพอ" });
     }
 
-    // ตรวจสอบว่าเกมเคยซื้อไปแล้ว
+    // ตรวจสอบ duplicate เกมจาก orders
     const [orderRows] = await db.query("SELECT game_all FROM orders WHERE user_id = ?", [uid]);
     const purchasedGameIds = new Set();
 
     orderRows.forEach(row => {
-      const ids = (row.game_all || "").split(",").map(id => id.trim()).filter(Boolean);
-      ids.forEach(id => purchasedGameIds.add(id));
+      let ids = [];
+      try {
+        ids = Array.isArray(row.game_all) ? row.game_all : JSON.parse(row.game_all || "[]");
+      } catch {
+        ids = [];
+      }
+      ids.forEach(id => purchasedGameIds.add(String(id)));
     });
 
     const duplicateGames = games.filter(g => purchasedGameIds.has(String(g.game_id)));
@@ -314,7 +319,7 @@ app.post("/buygame", async (req, res) => {
       });
     }
 
-    // หักเงิน
+    // หัก wallet
     await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [userWallet - purchaseTotal, uid]);
 
     // จัดการโค้ดส่วนลด
@@ -333,13 +338,13 @@ app.post("/buygame", async (req, res) => {
       }
     }
 
-    // บันทึก order ใหม่
+    // บันทึก order ใหม่ (เก็บ game_all เป็น JSON array)
     const orderDate = new Date();
-    const gameIdsStr = games.map(g => g.game_id).join(",");
+    const gameIdsArray = games.map(g => g.game_id);
 
     await db.query(
       "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
-      [uid, games.length, gameIdsStr, orderDate]
+      [uid, games.length, JSON.stringify(gameIdsArray), orderDate]
     );
 
     res.json({
@@ -354,7 +359,6 @@ app.post("/buygame", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
-
 
 
 // ------------------- เติมเงิน -------------------
