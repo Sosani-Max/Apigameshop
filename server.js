@@ -278,7 +278,6 @@ app.post("/code", async (req, res) => {
   }
 });
 
-
 app.post("/buygame", async (req, res) => {
   const { uid, games, discountCode, totalPrice } = req.body;
 
@@ -287,9 +286,10 @@ app.post("/buygame", async (req, res) => {
   }
 
   try {
-    // 1. ตรวจสอบ wallet
+    // ตรวจสอบ wallet
     const [userRows] = await db.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
     if (!userRows || userRows.length === 0) return res.status(404).json({ error: "ไม่พบผู้ใช้" });
+
     const userWallet = Number(userRows[0].wallet || 0);
     const purchaseTotal = Number(totalPrice || 0);
 
@@ -297,17 +297,15 @@ app.post("/buygame", async (req, res) => {
       return res.status(400).json({ error: "ยอดเงินในกระเป๋าไม่เพียงพอ" });
     }
 
-    // 2. ตรวจสอบ duplicate เกม
+    // ตรวจสอบ duplicate เกม
     const [rows] = await db.query("SELECT game_all FROM orders WHERE user_id = ?", [uid]);
     const purchasedGameIds = new Set();
 
     rows.forEach(row => {
       let ids = [];
       try {
-        if (typeof row.game_all === "string") {
-          const parsed = JSON.parse(row.game_all);
-          if (Array.isArray(parsed)) ids = parsed.map(id => String(id));
-        }
+        const parsed = JSON.parse(row.game_all || "[]");
+        if (Array.isArray(parsed)) ids = parsed.map(id => String(id)); // แปลงเป็น string
       } catch {
         ids = [];
       }
@@ -321,10 +319,10 @@ app.post("/buygame", async (req, res) => {
       });
     }
 
-    // 3. หัก wallet
+    // หัก wallet
     await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [userWallet - purchaseTotal, uid]);
 
-    // 4. จัดการโค้ดส่วนลด
+    // จัดการโค้ดส่วนลด
     if (discountCode) {
       const [codeRows] = await db.query("SELECT * FROM codes WHERE codename = ?", [discountCode]);
       if (codeRows.length > 0) {
@@ -340,21 +338,21 @@ app.post("/buygame", async (req, res) => {
       }
     }
 
-    // 5. บันทึก order ใหม่
+    // บันทึก order ใหม่
     const orderDate = new Date();
-    const gameIdsArray = games.map(g => g.game_id); // JSON array
+    const gameIdsArray = games.map(g => String(g.game_id)); // string array
 
     await db.query(
       "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
       [uid, games.length, JSON.stringify(gameIdsArray), orderDate]
     );
 
-    // 6. ส่ง response
+    // ส่ง response
     res.json({
       message: "ซื้อเกมสำเร็จ",
       totalPrice: purchaseTotal,
       newWallet: userWallet - purchaseTotal,
-      games: games.map(g => ({ game_id: g.game_id, game_name: g.game_name, image: g.image }))
+      games: games.map(g => ({ game_id: String(g.game_id), game_name: g.game_name, image: g.image }))
     });
 
   } catch (err) {
