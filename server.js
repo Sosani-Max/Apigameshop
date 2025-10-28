@@ -257,7 +257,6 @@ app.post("/code", async (req, res) => {
   }
 
   try {
-    // ดึงข้อมูลโค้ด
     const [rows] = await db.query("SELECT * FROM codes WHERE codename = ?", [code]);
     if (rows.length === 0) {
       return res.status(400).json({ error: "ไม่พบโค้ดนี้" });
@@ -265,21 +264,23 @@ app.post("/code", async (req, res) => {
 
     const codeData = rows[0];
 
-    // แปลง user_use เป็น array อย่างปลอดภัย
+    // แปลง user_use เป็น array
     let usedList = [];
-    try {
-      usedList = JSON.parse(codeData.user_use || "[]");
-      if (!Array.isArray(usedList)) usedList = [];
-    } catch {
-      usedList = [];
+    if (codeData.user_use && codeData.user_use.trim() !== "") {
+      usedList = codeData.user_use.split(",").map(s => s.trim());
     }
 
-    // เช็คว่า uid ใช้โค้ดไปแล้วหรือยัง
+    // เช็คว่า uid เคยใช้โค้ดแล้วหรือไม่
     if (usedList.includes(String(uid))) {
       return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
     }
 
-    // จำนวนเปอร์เซ็นต์ส่วนลด
+    // เพิ่ม uid เข้า usedList (ต่อท้าย)
+    usedList.push(String(uid));
+
+    // บันทึกกลับ DB เป็น string comma-separated
+    await db.query("UPDATE codes SET user_use = ? WHERE codename = ?", [usedList.join(","), code]);
+
     const persen = Number(codeData.persen || 0);
 
     res.json({ message: "โค้ดผ่าน", persen });
