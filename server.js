@@ -250,26 +250,46 @@ app.get('/topsell', async (req, res) => {
   }
 });
 
-app.post("/buygame", async (req, res) => {
-  const connection = db; // assume db เป็น MySQL promise pool
-  try {
-    const { uid, games } = req.body;
-    const discountCode = req.body.discountCode || null;
+app.post("/code", async (req, res) => {
+  const { uid, code } = req.body;
+  if (!uid || !code) return res.status(400).json({ error: "กรุณาส่ง uid และ code" });
 
-    if (!uid || !games || !Array.isArray(games) || games.length === 0) {
-      return res.status(400).json({ error: "กรุณาส่ง uid และเกมที่ต้องการซื้อ" });
+  try {
+    const [rows] = await db.query("SELECT * FROM codes WHERE code = ?", [code]);
+
+    if (rows.length === 0) {
+      return res.status(400).json({ error: "ไม่พบโค้ดนี้" });
     }
 
-    // 1️⃣ ตรวจสอบว่าเกมนี้ซื้อแล้วหรือยัง
-    const gameIds = games.map(g => g.game_id);
-    const [ordersRows] = await connection.query(
-      "SELECT * FROM orders WHERE user_id = ?",
-      [uid]
-    );
+    const codeData = rows[0];
+    let usedList = [];
+    try { usedList = JSON.parse(codeData.user_use || "[]"); } catch { usedList = []; }
 
+    if (usedList.includes(uid)) {
+      return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
+    }
+
+    const persen = Number(codeData.persen || 0);
+
+    res.json({ message: "โค้ดผ่าน", persen });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "เกิดข้อผิดพลาดในเซิร์ฟเวอร์" });
+  }
+});
+
+
+app.post("/buygame", async (req, res) => {
+  const { uid, games, discountCode } = req.body; // discountCode แค่เก็บไว้ตอนสำเร็จ
+  if (!uid || !games || !Array.isArray(games) || games.length === 0) {
+    return res.status(400).json({ error: "กรุณาส่ง uid และเกมที่ต้องการซื้อ" });
+  }
+
+  try {
+    // ตรวจสอบเกมที่ซื้อไปแล้ว
+    const [ordersRows] = await db.query("SELECT * FROM orders WHERE user_id = ?", [uid]);
     const purchasedGames = ordersRows.map(order => {
-      try { return JSON.parse(order.game_all); }
-      catch { return []; }
+      try { return JSON.parse(order.game_all); } catch { return []; }
     }).flat();
 
     const alreadyPurchased = games.filter(g => purchasedGames.includes(g.game_id));
@@ -280,60 +300,36 @@ app.post("/buygame", async (req, res) => {
       });
     }
 
-    // 2️⃣ คำนวณราคารวม (บังคับแปลงเป็น number)
+    // รวมราคา
     let totalPrice = games.reduce((sum, g) => sum + Number(g.price || 0), 0);
 
-    // 3️⃣ ตรวจสอบโค้ดส่วนลด
-    let usedList = [];   
-    if (discountCode) {
-      const [codeRows] = await connection.query(
-        "SELECT * FROM codes WHERE code = ?",
-        [discountCode]
-      );
-
-      if (codeRows.length === 0) {
-        return res.status(400).json({ error: "ไม่พบโค้ดส่วนลด" });
-      }
-
-      const codeData = codeRows[0];
-      try { usedList = JSON.parse(codeData.user_use || "[]"); } catch { usedList = []; }
-
-      if (usedList.includes(uid)) {
-        return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
-      }
-
-      const discountPercent = Number(codeData.persen || 0);
-      totalPrice = totalPrice - (totalPrice * discountPercent / 100);
-    }
-
-    // 4️⃣ ตรวจสอบ wallet
-    const [userRows] = await connection.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
+    // ตรวจสอบ wallet
+    const [userRows] = await db.query("SELECT wallet FROM users WHERE uid = ?", [uid]);
     const userWallet = Number(userRows[0]?.wallet || 0);
-
-    if (isNaN(userWallet) || isNaN(totalPrice)) {
-      return res.status(400).json({ error: "เกิดข้อผิดพลาดในการคำนวณเงิน" });
-    }
 
     if (userWallet < totalPrice) {
       return res.status(400).json({ error: "ยอดเงินในกระเป๋าไม่เพียงพอ" });
     }
 
-    // 5️⃣ หักเงินผู้ใช้
+    // หักเงิน
     const newWallet = userWallet - totalPrice;
-    await connection.query("UPDATE users SET wallet = ? WHERE uid = ?", [newWallet, uid]);
+    await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [newWallet, uid]);
 
-    // 6️⃣ หลังจากหักเงินสำเร็จแล้ว บันทึกว่าใช้โค้ดแล้ว
+    // ถ้ามีโค้ด ก็บันทึกว่าใช้โค้ดแล้ว
     if (discountCode) {
-      usedList.push(uid);
-      await connection.query(
-        "UPDATE codes SET user_use = ? WHERE code = ?",
-        [JSON.stringify(usedList), discountCode]
-      );
+      const [codeRows] = await db.query("SELECT * FROM codes WHERE code = ?", [discountCode]);
+      if (codeRows.length > 0) {
+        let usedList = [];
+        try { usedList = JSON.parse(codeRows[0].user_use || "[]"); } catch {}
+        usedList.push(uid);
+        await db.query("UPDATE codes SET user_use = ? WHERE code = ?", [JSON.stringify(usedList), discountCode]);
+      }
     }
 
-    // 7️⃣ บันทึก order
+    // บันทึก order
+    const gameIds = games.map(g => g.game_id);
     const orderDate = new Date();
-    await connection.query(
+    await db.query(
       "INSERT INTO orders (user_id, amount, game_all, order_date) VALUES (?, ?, ?, ?)",
       [uid, games.length, JSON.stringify(gameIds), orderDate]
     );
@@ -350,9 +346,6 @@ app.post("/buygame", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
-
-
-
 
 
 // ------------------- เติมเงิน -------------------
