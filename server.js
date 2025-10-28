@@ -301,12 +301,17 @@ app.post("/buygame", async (req, res) => {
     // หักเงิน
     await db.query("UPDATE users SET wallet = ? WHERE uid = ?", [userWallet - totalPrice, uid]);
 
-    // ใช้โค้ดส่วนลด (ถ้ามี)
+    // จัดการโค้ดส่วนลด
     if (discountCode) {
       const [codeRows] = await db.query("SELECT * FROM codes WHERE codename = ?", [discountCode]);
       if (codeRows.length > 0) {
         let usedList = [];
-        try { usedList = JSON.parse(codeRows[0].user_use || "[]"); } catch {}
+        try {
+          usedList = JSON.parse(codeRows[0].user_use || "[]");
+          if (!Array.isArray(usedList)) usedList = [];
+        } catch {
+          usedList = [];
+        }
         usedList.push(uid);
         await db.query("UPDATE codes SET user_use = ? WHERE codename = ?", [JSON.stringify(usedList), discountCode]);
       }
@@ -331,7 +336,6 @@ app.post("/buygame", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
   }
 });
-
 
 
 // ------------------- เติมเงิน -------------------
