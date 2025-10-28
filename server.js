@@ -252,23 +252,34 @@ app.get('/topsell', async (req, res) => {
 
 app.post("/code", async (req, res) => {
   const { uid, code } = req.body;
-  if (!uid || !code) return res.status(400).json({ error: "กรุณาส่ง uid และ code" });
+  if (!uid || !code) {
+    return res.status(400).json({ error: "กรุณาส่ง uid และ code" });
+  }
 
   try {
+    // ดึงข้อมูลโค้ด
     const [rows] = await db.query("SELECT * FROM codes WHERE codename = ?", [code]);
-
     if (rows.length === 0) {
       return res.status(400).json({ error: "ไม่พบโค้ดนี้" });
     }
 
     const codeData = rows[0];
-    let usedList = [];
-    try { usedList = JSON.parse(codeData.user_use || "[]"); } catch { usedList = []; }
 
-    if (usedList.includes(uid)) {
+    // แปลง user_use เป็น array อย่างปลอดภัย
+    let usedList = [];
+    try {
+      usedList = JSON.parse(codeData.user_use || "[]");
+      if (!Array.isArray(usedList)) usedList = [];
+    } catch {
+      usedList = [];
+    }
+
+    // เช็คว่า uid ใช้โค้ดไปแล้วหรือยัง
+    if (usedList.includes(String(uid))) {
       return res.status(400).json({ error: "คุณใช้โค้ดนี้ไปแล้ว" });
     }
 
+    // จำนวนเปอร์เซ็นต์ส่วนลด
     const persen = Number(codeData.persen || 0);
 
     res.json({ message: "โค้ดผ่าน", persen });
@@ -277,6 +288,7 @@ app.post("/code", async (req, res) => {
     res.status(500).json({ error: "เกิดข้อผิดพลาดในเซิร์ฟเวอร์" });
   }
 });
+
 
 app.post("/buygame", async (req, res) => {
   const { uid, games, discountCode, totalPrice } = req.body;
