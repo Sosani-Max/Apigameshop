@@ -361,6 +361,64 @@ app.post("/buygame", async (req, res) => {
   }
 });
 
+app.get("/mygame", async (req, res) => {
+  const uid = req.query.uid;
+  if (!uid) return res.status(400).json({ error: "กรุณาส่ง uid" });
+
+  try {
+    // 1. ดึง order ของ user
+    const [orders] = await db.query("SELECT game_all, order_date FROM orders WHERE user_id = ?", [uid]);
+    
+    // 2. รวม game_id ทั้งหมดจากทุก order
+    const gameIds = [];
+    orders.forEach(order => {
+      try {
+        const ids = JSON.parse(order.game_all || "[]"); // JSON array ของ string
+        if (Array.isArray(ids)) ids.forEach(id => gameIds.push(String(id)));
+      } catch {
+        // skip ถ้า parse ไม่ได้
+      }
+    });
+
+    if (gameIds.length === 0) return res.json({ games: [] });
+
+    // 3. ดึงรายละเอียดเกมจาก table games
+    const [games] = await db.query(
+      `SELECT * FROM games WHERE game_id IN (?)`,
+      [gameIds]
+    );
+
+    // 4. รวม order_date จาก orders ด้วย (optional)
+    const gamesWithDate = games.map(g => {
+      let purchasedDate = null;
+      for (const order of orders) {
+        try {
+          const ids = JSON.parse(order.game_all || "[]");
+          if (Array.isArray(ids) && ids.includes(String(g.game_id))) {
+            purchasedDate = order.order_date;
+            break;
+          }
+        } catch {}
+      }
+      return {
+        game_id: String(g.game_id),
+        game_name: g.name,
+        price: g.price,
+        description: g.description,
+        release_date: g.release_date,
+        image: g.image
+      };
+    });
+
+    res.json({ games: gamesWithDate });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์" });
+  }
+});
+
+
 // ------------------- เติมเงิน -------------------
 app.post("/wallet", async (req, res) => {
   try {
