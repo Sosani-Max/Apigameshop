@@ -473,6 +473,7 @@ app.post("/buygame", async (req, res) => {
   }
 });
 
+
 app.get("/mygame", async (req, res) => {
   const uid = req.query.uid;
   if (!uid) return res.status(400).json({ error: "กรุณาส่ง uid" });
