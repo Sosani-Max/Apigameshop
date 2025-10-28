@@ -406,7 +406,7 @@ app.get("/mygame", async (req, res) => {
       }
       return {
         game_id: String(g.game_id),
-        game_name: g.name,
+        game_name: g.game_name,
         price: g.price,
         category: g.category,   // category type
         description: g.description,
